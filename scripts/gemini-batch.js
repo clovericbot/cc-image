@@ -73,8 +73,9 @@ async function main(){
   await new Promise(r=>(bws.onopen=r));
 
   const tabs=await(await fetch(`http://localhost:${CDP_PORT}/json/list`)).json();
-  let tab=tabs.find(t=>t.url.includes("gemini.google.com"));
-  if(!tab){await fetch(`http://localhost:${CDP_PORT}/json/new?https://gemini.google.com/u/${USER}/app?hl=en`,{method:"PUT"});await sleep(4000);const t2=await(await fetch(`http://localhost:${CDP_PORT}/json/list`)).json();tab=t2.find(t=>t.url.includes("gemini.google.com"));}
+  const isGeminiApp=t=>/gemini\.google\.com\/(u\/\d+\/)?app/.test(t.url);
+  let tab=tabs.find(t=>isGeminiApp(t)&&t.url.includes(`/u/${USER}/`))||tabs.find(t=>isGeminiApp(t));
+  if(!tab){await fetch(`http://localhost:${CDP_PORT}/json/new?https://gemini.google.com/u/${USER}/app?hl=en`,{method:"PUT"});await sleep(4000);const t2=await(await fetch(`http://localhost:${CDP_PORT}/json/list`)).json();tab=t2.find(t=>isGeminiApp(t));}
   if(!tab)throw new Error("No Gemini tab");
   ws=new WebSocket(tab.webSocketDebuggerUrl);
   await new Promise(r=>(ws.onopen=r));

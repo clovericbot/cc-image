@@ -29,12 +29,16 @@ async function connect() {
   await new Promise(r=>(bws.onopen=r));
 
   const tabs = await (await fetch(`http://localhost:${CDP_PORT}/json/list`)).json();
-  let tab = tabs.find(t=>t.url.includes("gemini.google.com"));
+  // Match Gemini app tabs specifically (not glic, service workers, rotate cookies, etc.)
+  const isGeminiApp = t => /gemini\.google\.com\/(u\/\d+\/)?app/.test(t.url);
+  // Prefer tabs matching the target user
+  let tab = tabs.find(t=>isGeminiApp(t) && t.url.includes(`/u/${USER}/`))
+         || tabs.find(t=>isGeminiApp(t));
   if (!tab) {
     await fetch(`http://localhost:${CDP_PORT}/json/new?https://gemini.google.com/u/${USER}/app?hl=en`,{method:"PUT"});
     await sleep(4000);
     const tabs2 = await (await fetch(`http://localhost:${CDP_PORT}/json/list`)).json();
-    tab = tabs2.find(t=>t.url.includes("gemini.google.com"));
+    tab = tabs2.find(t=>isGeminiApp(t));
     if (!tab) throw new Error("Cannot open Gemini");
   }
   ws = new WebSocket(tab.webSocketDebuggerUrl);
@@ -128,9 +132,12 @@ async function main() {
   console.log("  📤 Sent");
 
   await sleep(MIN_WAIT*1000);
+  let dlReady=false, dlReadyAt=0;
   for (let i=0;i<120;i++) {
     const dl=await getDL(), stop=await hasStop();
-    if (dl>prevDL&&!stop) { console.log(`  ✅ Ready (${MIN_WAIT+i*2}s, DL: ${prevDL}→${dl})`); break; }
+    if (dl>prevDL && !dlReady) { dlReady=true; dlReadyAt=i; console.log(`  🖼️ Image appeared (${MIN_WAIT+i*2}s, DL: ${prevDL}→${dl})`); }
+    // Break if: (a) image ready + stop gone, or (b) image ready + 15s buffer passed
+    if (dl>prevDL && (!stop || (dlReady && i-dlReadyAt>=8))) { console.log(`  ✅ Ready (${MIN_WAIT+i*2}s, DL: ${prevDL}→${dl}, stop=${stop?1:0})`); break; }
     if (i%5===0&&i>0) console.log(`  ${MIN_WAIT+i*2}s (stop=${stop?1:0}, dl=${dl}/${prevDL+1})`);
     await sleep(2000);
   }
